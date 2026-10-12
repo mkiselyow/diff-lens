@@ -374,12 +374,10 @@ export const register: Register = (on, options) => {
     const tint = (kind: Row['kind']) => (kind === '+' ? 'diffAddedDimmed' : kind === '-' ? 'diffRemovedDimmed' : undefined)
     const ink = (kind: Row['kind']) => (kind === '+' ? 'diffAdded' : kind === '-' ? 'diffRemoved' : undefined)
     const width = String(rows.reduce((max, row) => Math.max(max, row.n), 0)).length + 2
-    const columns = e.viewport?.columns ?? 80
     const at = v.stats.findIndex(one => one.path === v.file)
     const cite = (row: Row) => {
       if (v.file !== null) void $.prompt.fill({ text: `${v.file}:${row.n} `, mode: 'insert' })
     }
-    const short = (text: string, room: number) => (text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`)
     const counts = (one: FileStat) =>
       one.isUntracked ? (
         <Text color="diffAdded">new</Text>
@@ -413,40 +411,44 @@ export const register: Register = (on, options) => {
 
     const drawFile = (one: FileStat, i: number) => {
       const isActive = one.path === v.file
-      const folder = one.path.split('/').slice(0, -1).join('/')
 
       return (
-        <Box key={`row${i}`} flexDirection="row" position="relative" backgroundColor={isActive ? 'diffAddedDimmed' : undefined} hover={{ backgroundColor: 'subtle' }}>
+        <Box flexDirection="row" backgroundColor={isActive ? 'diffAddedDimmed' : undefined} hover={{ backgroundColor: 'subtle', scope: `file${i}` }}>
           <Box width={2} flexShrink={0}>
             <Text color="suggestion">{isActive ? '▌' : ' '}</Text>
           </Box>
-          <Button key={`f${i}`} plain label={short(basename(one.path), Math.max(12, columns - 16))} onPress={() => void openFile($, one.path, null)} />
-          <Box flexGrow={1} />
+          <Box flexShrink={1} minWidth={0} overflow="hidden">
+            <Button key={`f${i}`} plain label={basename(one.path)} onPress={() => void openFile($, one.path, null)} />
+          </Box>
+          <Box flexGrow={1} minWidth={1} />
           <Box flexShrink={0} marginRight={1}>
             {counts(one)}
           </Box>
-          {folder !== '' && (
-            <Box position="absolute" top={1} left={2} display="none" hover={{ display: 'flex' }} backgroundColor="inverseText" borderStyle="round" borderDimColor paddingX={1}>
-              <Text dimColor>{one.path}</Text>
-            </Box>
-          )}
         </Box>
       )
     }
+
+    const drawPath = (one: FileStat, i: number) => (
+      <Box position="absolute" top={0} left={2} right={0} display="none" hover={{ display: 'flex', scope: `file${i}` }}>
+        <Text dimColor wrap="truncate-start">
+          {one.path}
+        </Text>
+      </Box>
+    )
 
     const tree = (
       <Box flexDirection="column">
         <Box flexDirection="row" gap={1} alignItems="center">
           <Button key="list" plain label={`${v.isListOpen ? '▾' : '▸'} ${v.stats.length} ${v.stats.length === 1 ? 'file' : 'files'}`} onPress={() => void patch($, { isListOpen: !v.isListOpen })} />
           {v.file !== null && (
-            <Box flexGrow={1} flexShrink={1} flexDirection="row" gap={1}>
+            <Box flexShrink={1} minWidth={0} overflow="hidden">
               <Text bold wrap="truncate-end">
-                {short(basename(v.file), Math.max(12, columns - 34))}
+                {basename(v.file)}
               </Text>
-              {stat !== undefined && <Box flexShrink={0}>{counts(stat)}</Box>}
             </Box>
           )}
-          {v.file === null && <Box flexGrow={1} />}
+          {v.file !== null && stat !== undefined && <Box flexShrink={0}>{counts(stat)}</Box>}
+          <Box flexGrow={1} />
           {v.stats.length > 1 && v.file !== null && (
             <Box flexShrink={0} flexDirection="row" gap={1}>
               <Text dimColor>
@@ -487,6 +489,9 @@ export const register: Register = (on, options) => {
         {v.isListOpen && (
           <Box flexDirection="column" marginTop={1}>
             {v.stats.map(drawFile)}
+            <Box position="relative" height={1}>
+              {v.stats.map(drawPath)}
+            </Box>
           </Box>
         )}
         <Box flexDirection="column" marginTop={1}>
