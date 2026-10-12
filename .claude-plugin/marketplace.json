@@ -1,0 +1,13 @@
+{
+  "name": "diff-lens",
+  "owner": {
+    "name": "Max Kyselov"
+  },
+  "plugins": [
+    {
+      "name": "diff-lens",
+      "source": "./"
+    }
+  ],
+  "description": "diff-lens: see a file's changes against a base branch from any file link in Claude Code Desktop."
+}

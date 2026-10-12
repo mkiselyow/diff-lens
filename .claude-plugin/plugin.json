@@ -1,0 +1,19 @@
+{
+  "name": "diff-lens",
+  "version": "0.1.0",
+  "description": "Click a file link in a reply to see that file's changes against a base branch, scrolled to the line.",
+  "author": { "name": "Max Kyselov", "url": "https://github.com/mkiselyow" },
+  "homepage": "https://github.com/mkiselyow/diff-lens",
+  "repository": "https://github.com/mkiselyow/diff-lens",
+  "license": "MIT",
+  "keywords": ["diff", "review", "pull-request", "pane"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "baseBranch": {
+      "type": "string",
+      "title": "Base branch",
+      "description": "Branch or ref to compare against, for example origin/main. Leave empty to detect it.",
+      "default": ""
+    }
+  }
+}
