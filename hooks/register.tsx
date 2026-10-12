@@ -252,23 +252,6 @@ const showInFiles = async ($: EngineInterface, path: string, line: number | null
   }
 }
 
-const tryNative = async ($: EngineInterface, path: string, line: number | null) => {
-  const show = async (args: Record<string, unknown>) => {
-    try {
-      return (await $.mcp.call('ccd_view', 'show_pane', args)).isError ? 'error' : 'ok'
-    } catch (error) {
-      return String(error).slice(0, 60)
-    }
-  }
-  const outcomes = [await show({ pane: 'diff', path })]
-  for (const wait of [500, 900, 1500]) {
-    await $.clock.sleep(wait)
-    outcomes.push(await show(line === null ? { pane: 'diff', path } : { pane: 'diff', path, line }))
-  }
-
-  return outcomes.join(', ')
-}
-
 const follow = async ($: EngineInterface, path: string, line: number | null) => {
   const v = await current($)
   if (v.stats.some(stat => stat.path === path)) await openFile($, path, line)
@@ -320,14 +303,6 @@ export const register: Register = (on, options) => {
       const v = await current($)
 
       return { text: v.base === ref ? `diff-lens now compares against ${ref}.` : v.message }
-    }
-    if (args === 'native' || args.startsWith('native ')) {
-      const shown = await current($)
-      const wanted = args === 'native' ? { path: shown.file ?? '', line: shown.line } : splitLine(args.slice(7).trim())
-      if (wanted.path === '') return { text: 'diff-lens: open a file in the pane first, or use /diff-lens native <file>:<line>.' }
-      const outcome = await tryNative($, wanted.path, wanted.line)
-
-      return { text: `diff-lens: asked the built-in Diff pane for ${wanted.path}${wanted.line === null ? '' : `:${wanted.line}`} four times (${outcome}).` }
     }
     const v = await refresh($)
     if (args === '') {
