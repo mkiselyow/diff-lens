@@ -12,6 +12,7 @@ const TITLE = 'Diff lens'
 const TARGET = 'target'
 const CONTEXT = 3
 const ROW_LIMIT = 400
+const PANE_COLUMNS = 100
 const FULL_CONTEXT = '-U100000'
 const FALLBACK_BASES = ['origin/main', 'origin/master', 'origin/develop', 'origin/release', 'main', 'master']
 const EMPTY: LensView = {
@@ -134,35 +135,73 @@ const loadDiff = async ($: EngineInterface, v: LensView, path: string) => {
   return { ...ran, isFailed, stat }
 }
 
+const measure = (v: LensView): { rows: Row[]; drawn: Layout } => {
+  const key = `${v.diff.length}:${v.line}:${v.expanded.join(',')}:${v.file}:${v.mergeBase}`
+  if (memo.key !== key || memo.rows.length === 0) {
+    memo.key = key
+    memo.rows = parse(v.diff)
+    memo.drawn = layout(memo.rows, v.line, v.expanded, CONTEXT, ROW_LIMIT)
+  }
+
+  return memo
+}
+
 const reveal = async ($: EngineInterface, key: string): Promise<boolean> => {
   const toKey = async () => {
     const moved = await $.ui.scroll({ in: PANE, to: { key }, block: 'center' })
 
     return !('deny' in moved && moved.deny)
   }
-  const nudges: ('start' | 'end')[][] = [[], ['start'], ['end'], ['end', 'start']]
+  const nudges: [string, ('start' | 'end')[]][] = [
+    ['direct', []],
+    ['start nudge', ['start']],
+    ['end nudge', ['end']],
+    ['end+start nudge', ['end', 'start']],
+  ]
   await $.clock.sleep(120)
-  for (const edges of nudges) {
+  for (const [name, edges] of nudges) {
     for (const edge of edges) {
       await $.ui.scroll({ in: PANE, to: edge })
       await $.clock.sleep(90)
     }
     if (await toKey()) {
-      await $.clock.sleep(180)
-      await toKey()
+      record(`scroll: ${name}`, 0)
+      if (edges.length > 0) {
+        await $.clock.sleep(180)
+        await toKey()
+      }
 
       return true
     }
   }
+  record('scroll: failed', 0)
 
   return false
+}
+
+const flash = async ($: EngineInterface, mine: number, landed: number) => {
+  const isShown = await reveal($, TARGET)
+  if (mine !== opens) return
+  if (!isShown) await patch($, { message: `Could not scroll to line ${landed}; it is marked with ▸.` })
+  await $.clock.sleep(1200)
+  if (mine === opens) await patch($, { isFlashing: false })
 }
 
 const openFile = async ($: EngineInterface, path: string, line: number | null) => {
   const mine = ++opens
   const startedAt = await $.clock.now()
+  const shown = await current($)
+  if (shown.file === path && shown.status === 'ready' && shown.diff !== '') {
+    const rows = measure(shown).rows
+    const landed = line === null ? null : nearestLine(rows, line)
+    await patch($, { line: landed, isFlashing: landed !== null, isListOpen: false, change: -1 })
+    await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
+    if (landed !== null) await flash($, mine, landed)
+
+    return
+  }
   await patch($, { file: path, line: null, diff: '', status: 'loading', message: '', isListOpen: false, isBasePickerOpen: false, expanded: [], change: -1 })
-  await $.ui.open({ id: PANE, title: TITLE })
+  await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
   const before = await current($)
   const v = before.mergeBase === '' || !before.stats.some(stat => stat.path === path) ? await refresh($) : before
   if (v.status === 'error') return
@@ -187,13 +226,8 @@ const openFile = async ($: EngineInterface, path: string, line: number | null) =
           : ''
   await patch($, { diff: isBinary ? '' : loaded.out, isTruncated: loaded.isTruncated, status: 'ready', message, line: landed, isFlashing: landed !== null })
   record('open', (await $.clock.now()) - startedAt)
-  if (landed === null) return
-  const isShown = await reveal($, TARGET)
+  if (landed !== null) await flash($, mine, landed)
   record('open+scroll', (await $.clock.now()) - startedAt)
-  if (mine !== opens) return
-  if (!isShown) await patch($, { message: `Could not scroll to line ${landed}; it is marked with ▸.` })
-  await $.clock.sleep(1200)
-  if (mine === opens) await patch($, { isFlashing: false })
 }
 
 const reload = async ($: EngineInterface) => {
@@ -217,6 +251,23 @@ const showInFiles = async ($: EngineInterface, path: string, line: number | null
   } catch {
     $.ui.toast(`${NAME}: could not open ${path}`)
   }
+}
+
+const tryNative = async ($: EngineInterface, path: string, line: number | null) => {
+  const show = async (args: Record<string, unknown>) => {
+    try {
+      return (await $.mcp.call('ccd_view', 'show_pane', args)).isError ? 'error' : 'ok'
+    } catch (error) {
+      return String(error).slice(0, 60)
+    }
+  }
+  const outcomes = [await show({ pane: 'diff', path })]
+  for (const wait of [500, 900, 1500]) {
+    await $.clock.sleep(wait)
+    outcomes.push(await show(line === null ? { pane: 'diff', path } : { pane: 'diff', path, line }))
+  }
+
+  return outcomes.join(', ')
 }
 
 const follow = async ($: EngineInterface, path: string, line: number | null) => {
@@ -248,17 +299,6 @@ const chooseBase = async ($: EngineInterface, base: string) => {
   if (v.file !== null && v.base === base) await openFile($, v.file, null)
 }
 
-const measure = (v: LensView): { rows: Row[]; drawn: Layout } => {
-  const key = `${v.diff.length}:${v.line}:${v.expanded.join(',')}:${v.file}:${v.mergeBase}`
-  if (memo.key !== key || memo.rows.length === 0) {
-    memo.key = key
-    memo.rows = parse(v.diff)
-    memo.drawn = layout(memo.rows, v.line, v.expanded, CONTEXT, ROW_LIMIT)
-  }
-
-  return memo
-}
-
 const basename = (path: string): string => path.split('/').slice(-1)[0] ?? path
 
 export const register: Register = (on, options) => {
@@ -282,10 +322,16 @@ export const register: Register = (on, options) => {
 
       return { text: v.base === ref ? `diff-lens now compares against ${ref}.` : v.message }
     }
+    if (args.startsWith('native ')) {
+      const wanted = splitLine(args.slice(7).trim())
+      const outcome = await tryNative($, wanted.path, wanted.line)
+
+      return { text: `diff-lens: asked the built-in Diff pane for ${wanted.path}${wanted.line === null ? '' : `:${wanted.line}`} four times (${outcome}).` }
+    }
     const v = await refresh($)
     if (args === '') {
       await patch($, { isListOpen: true })
-      await $.ui.open({ id: PANE, title: TITLE })
+      await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
 
       return { text: v.status === 'error' ? v.message : `diff-lens: ${v.stats.length} changed files against ${v.base}.` }
     }
@@ -351,23 +397,35 @@ export const register: Register = (on, options) => {
     const stat = v.stats.find(one => one.path === v.file)
     const tint = (kind: Row['kind']) => (kind === '+' ? 'diffAddedDimmed' : kind === '-' ? 'diffRemovedDimmed' : undefined)
     const ink = (kind: Row['kind']) => (kind === '+' ? 'diffAdded' : kind === '-' ? 'diffRemoved' : undefined)
-    const width = String(rows.reduce((max, row) => Math.max(max, row.n), 0)).length
+    const width = String(rows.reduce((max, row) => Math.max(max, row.n), 0)).length + 2
+    const columns = e.viewport?.columns ?? 80
+    const at = v.stats.findIndex(one => one.path === v.file)
     const cite = (row: Row) => {
       if (v.file !== null) void $.prompt.fill({ text: `${v.file}:${row.n} `, mode: 'insert' })
     }
+    const short = (text: string, room: number) => (text.length <= room ? text : `${text.slice(0, Math.max(1, room - 1))}…`)
+    const counts = (one: FileStat) =>
+      one.isUntracked ? (
+        <Text color="diffAdded">new</Text>
+      ) : one.isBinary ? (
+        <Text dimColor>binary</Text>
+      ) : (
+        <Text>
+          <Text color="diffAdded">+{one.added}</Text> <Text color="diffRemoved">-{one.removed}</Text>
+        </Text>
+      )
 
     const drawRun = (run: Run, index: number) => (
       <Box key={`run${index}`} flexDirection="column">
-        {run.rows.map((row, at) => {
-          const key = run.isTarget ? TARGET : run.change !== null && at === 0 ? `c${run.change}` : null
-          const number = String(row.n).padStart(width, ' ')
+        {run.rows.map((row, i) => {
+          const key = run.isTarget ? TARGET : run.change !== null && i === 0 ? `c${run.change}` : undefined
 
           return (
             <Box flexDirection="row" backgroundColor={run.isTarget && v.isFlashing ? 'suggestion' : tint(row.kind)}>
-              <Box width={width + 2} flexShrink={0}>
-                {key === null ? <Text dimColor>{number}</Text> : <Button key={key} plain dimColor label={number} onPress={() => cite(row)} />}
+              <Box width={width} flexShrink={0} justifyContent="flex-end">
+                <Button key={key} plain dimColor label={String(row.n)} onPress={() => cite(row)} />
               </Box>
-              <Box width={2} flexShrink={0}>
+              <Box width={3} flexShrink={0} justifyContent="center">
                 <Text color={run.isTarget ? 'suggestion' : ink(row.kind)}>{run.isTarget ? '▸' : row.kind}</Text>
               </Box>
               <Text wrap="truncate-end">{row.text === '' ? ' ' : row.text}</Text>
@@ -377,39 +435,61 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
+    const drawFile = (one: FileStat, i: number) => {
+      const isActive = one.path === v.file
+      const folder = one.path.split('/').slice(0, -1).join('/')
+
+      return (
+        <Box key={`row${i}`} flexDirection="row" position="relative" backgroundColor={isActive ? 'diffAddedDimmed' : undefined} hover={{ backgroundColor: 'subtle' }}>
+          <Box width={2} flexShrink={0}>
+            <Text color="suggestion">{isActive ? '▌' : ' '}</Text>
+          </Box>
+          <Button key={`f${i}`} plain label={short(basename(one.path), Math.max(12, columns - 16))} onPress={() => void openFile($, one.path, null)} />
+          <Box flexGrow={1} />
+          <Box flexShrink={0} marginRight={1}>
+            {counts(one)}
+          </Box>
+          {folder !== '' && (
+            <Box position="absolute" top={1} left={2} display="none" hover={{ display: 'flex' }} backgroundColor="inverseText" borderStyle="round" borderDimColor paddingX={1}>
+              <Text dimColor>{one.path}</Text>
+            </Box>
+          )}
+        </Box>
+      )
+    }
+
     const tree = (
       <Box flexDirection="column">
         <Box flexDirection="row" gap={1} alignItems="center">
-          <Button
-            key="list"
-            plain
-            hotkey="l"
-            label={`${v.isListOpen ? '⌃' : '⌄'} ${v.stats.length} ${v.stats.length === 1 ? 'file' : 'files'}`}
-            onPress={() => void patch($, { isListOpen: !v.isListOpen })}
-          />
-          <Button key="prevFile" plain hotkey="k" label="‹" onPress={() => void stepFile($, -1)} />
-          <Button key="nextFile" plain hotkey="j" label="›" onPress={() => void stepFile($, 1)} />
+          <Button key="list" plain label={`${v.isListOpen ? '▾' : '▸'} ${v.stats.length} ${v.stats.length === 1 ? 'file' : 'files'}`} onPress={() => void patch($, { isListOpen: !v.isListOpen })} />
           {v.file !== null && (
-            <Text bold wrap="truncate-start">
-              {basename(v.file)}
-              {stat !== undefined && !stat.isUntracked && (
-                <Text>
-                  {' '}
-                  <Text color="diffAdded">+{stat.added}</Text> <Text color="diffRemoved">-{stat.removed}</Text>
-                </Text>
-              )}
-              {stat?.isUntracked === true && <Text color="diffAdded"> new</Text>}
-            </Text>
+            <Box flexGrow={1} flexShrink={1} flexDirection="row" gap={1}>
+              <Text bold wrap="truncate-end">
+                {short(basename(v.file), Math.max(12, columns - 34))}
+              </Text>
+              {stat !== undefined && <Box flexShrink={0}>{counts(stat)}</Box>}
+            </Box>
+          )}
+          {v.file === null && <Box flexGrow={1} />}
+          {v.stats.length > 1 && v.file !== null && (
+            <Box flexShrink={0} flexDirection="row" gap={1}>
+              <Text dimColor>
+                {at + 1}/{v.stats.length}
+              </Text>
+              <Button key="prevFile" plain label="‹" onPress={() => void stepFile($, -1)} />
+              <Button key="nextFile" plain label="›" onPress={() => void stepFile($, 1)} />
+            </Box>
           )}
         </Box>
         <Box flexDirection="row" gap={1} alignItems="center">
-          <Button key="base" plain dimColor hotkey="b" label={`${v.base || 'no base'} → working tree`} onPress={() => void patch($, { isBasePickerOpen: !v.isBasePickerOpen })} />
-          {drawn.changes > 0 && <Button key="prevChange" plain hotkey="p" label="↑" onPress={() => void stepChange($, -1)} />}
-          {drawn.changes > 0 && <Button key="nextChange" plain hotkey="n" label="↓" onPress={() => void stepChange($, 1)} />}
+          <Button key="base" plain dimColor label={`${v.base || 'no base'} → working tree`} onPress={() => void patch($, { isBasePickerOpen: !v.isBasePickerOpen })} />
+          <Box flexGrow={1} />
           {drawn.changes > 0 && (
-            <Text dimColor>
-              {v.change >= 0 ? `change ${v.change + 1} of ${drawn.changes}` : `${drawn.changes} ${drawn.changes === 1 ? 'change' : 'changes'}`}
-            </Text>
+            <Box flexShrink={0} flexDirection="row" gap={1}>
+              <Text dimColor>{v.change >= 0 ? `change ${v.change + 1}/${drawn.changes}` : `${drawn.changes} ${drawn.changes === 1 ? 'change' : 'changes'}`}</Text>
+              <Button key="prevChange" plain label="↑" onPress={() => void stepChange($, -1)} />
+              <Button key="nextChange" plain label="↓" onPress={() => void stepChange($, 1)} />
+            </Box>
           )}
         </Box>
         {v.isBasePickerOpen && (
@@ -430,28 +510,22 @@ export const register: Register = (on, options) => {
         {v.status === 'idle' && v.stats.length > 0 && v.file === null && <Text dimColor>Click a file link in a reply, or pick a file below.</Text>}
         {v.isListOpen && (
           <Box flexDirection="column" marginTop={1}>
-            {v.stats.map((one, i) => (
-              <Box flexDirection="row" gap={1}>
-                <Button key={`f${i}`} plain label={`${one.path === v.file ? '▸ ' : '  '}${basename(one.path)}`} onPress={() => void openFile($, one.path, null)} />
-                {one.isUntracked ? <Text color="diffAdded">new</Text> : <Text color="diffAdded">+{one.added}</Text>}
-                {!one.isUntracked && <Text color="diffRemoved">-{one.removed}</Text>}
-                <Text dimColor wrap="truncate-start">
-                  {one.path.split('/').slice(0, -1).join('/')}
-                </Text>
-              </Box>
-            ))}
+            {v.stats.map(drawFile)}
           </Box>
         )}
         <Box flexDirection="column" marginTop={1}>
           {drawn.parts.map((part, index) =>
             'fold' in part ? (
-              <Button
-                key={`fold${part.fold}`}
-                plain
-                dimColor
-                label={`⌄ ${part.count} unmodified ${part.count === 1 ? 'line' : 'lines'}`}
-                onPress={() => void patch($, { expanded: [...v.expanded, part.fold] })}
-              />
+              <Box flexDirection="row">
+                <Box width={width} flexShrink={0} />
+                <Button
+                  key={`fold${part.fold}`}
+                  plain
+                  dimColor
+                  label={`▸ ${part.count} unmodified ${part.count === 1 ? 'line' : 'lines'}`}
+                  onPress={() => void patch($, { expanded: [...v.expanded, part.fold] })}
+                />
+              </Box>
             ) : (
               drawRun(part, index)
             ),

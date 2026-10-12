@@ -24,16 +24,14 @@ Answer `y` to add the marketplace and pick the user scope. The mod then loads in
 
 In the pane:
 
-| Control | Key | What it does |
-|---|---|---|
-| `⌄ 12 files` | `l` | Show or hide the list of changed files |
-| `‹` `›` | `k` `j` | Previous or next changed file |
-| `↑` `↓` | `p` `n` | Previous or next change in this file |
-| `origin/main → working tree` | `b` | Choose another base branch |
-| `⌄ 34 unmodified lines` | | Unfold that stretch |
-| A line number at the start of a change | | Put `path:line` into your prompt |
-
-Keys work while the pane has focus.
+| Control | What it does |
+|---|---|
+| `▸ 12 files` | Show or hide the list of changed files; hover a file for its full path |
+| `‹` `›` | Previous or next changed file |
+| `↑` `↓` | Previous or next change in this file |
+| `origin/main → working tree` | Choose another base branch |
+| `▸ 34 unmodified lines` | Unfold that stretch |
+| A line number | Put `path:line` into your prompt |
 
 ## What it compares
 
