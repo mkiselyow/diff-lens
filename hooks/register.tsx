@@ -12,7 +12,7 @@ const TITLE = 'Diff lens'
 const TARGET = 'target'
 const CONTEXT = 3
 const ROW_LIMIT = 400
-const PANE_COLUMNS = 100
+const PANE_COLUMNS = 150
 const FULL_CONTEXT = '-U100000'
 const FALLBACK_BASES = ['origin/main', 'origin/master', 'origin/develop', 'origin/release', 'main', 'master']
 const EMPTY: LensView = {
@@ -154,7 +154,6 @@ const reveal = async ($: EngineInterface, key: string): Promise<boolean> => {
   }
   const nudges: [string, ('start' | 'end')[]][] = [
     ['direct', []],
-    ['start nudge', ['start']],
     ['end nudge', ['end']],
     ['end+start nudge', ['end', 'start']],
   ]
@@ -322,8 +321,10 @@ export const register: Register = (on, options) => {
 
       return { text: v.base === ref ? `diff-lens now compares against ${ref}.` : v.message }
     }
-    if (args.startsWith('native ')) {
-      const wanted = splitLine(args.slice(7).trim())
+    if (args === 'native' || args.startsWith('native ')) {
+      const shown = await current($)
+      const wanted = args === 'native' ? { path: shown.file ?? '', line: shown.line } : splitLine(args.slice(7).trim())
+      if (wanted.path === '') return { text: 'diff-lens: open a file in the pane first, or use /diff-lens native <file>:<line>.' }
       const outcome = await tryNative($, wanted.path, wanted.line)
 
       return { text: `diff-lens: asked the built-in Diff pane for ${wanted.path}${wanted.line === null ? '' : `:${wanted.line}`} four times (${outcome}).` }
