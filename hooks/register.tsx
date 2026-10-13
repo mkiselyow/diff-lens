@@ -331,11 +331,10 @@ export const register: Register = (on, options) => {
     await $.tool.register({
       name: 'compare',
       description:
-        'Sets the base branch or ref that the diff-lens pane compares the working tree against. Call it once before a walkthrough of changes, with the same base you diffed against, so file links open the right diff.',
+        'Sets the base branch or ref that the diff-lens pane compares the working tree against, and answers with the base in use. Call it once before a walkthrough of changes. Leave base out to learn the default base the pane detected.',
       inputSchema: {
         type: 'object',
-        properties: { base: { type: 'string', description: 'Branch, tag or commit, for example origin/main or a1b2c3d.' } },
-        required: ['base'],
+        properties: { base: { type: 'string', description: 'Branch, tag or commit, for example origin/main or a1b2c3d. Optional.' } },
       },
       isDeferred: false,
     })
@@ -373,7 +372,12 @@ export const register: Register = (on, options) => {
 
   on('tool.call', { tool: COMPARE } as never, async ($: EngineInterface, e: unknown) => {
     const base = String((e as { base?: unknown }).base ?? '').trim()
-    if (base === '') return { deny: 'Give a base, for example origin/main.' }
+    if (base === '') {
+      const detected = await refresh($)
+      if (detected.base === '') return { deny: detected.message || 'No base branch was found; pass one, for example origin/main.' }
+
+      return { result: `diff-lens compares the working tree against ${detected.base} (the detected default): ${detected.stats.length} changed files.` }
+    }
     await chooseBase($, base)
     const v = await current($)
     if (v.base !== base) return { deny: v.message || `Base "${base}" was not found in this repository.` }

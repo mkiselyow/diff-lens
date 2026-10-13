@@ -83,6 +83,9 @@ describe('pane', () => {
     const set = await $.tool.call({ tool: 'mcp__diff-lens__compare', base: 'origin/main' } as never)
     const missing = await $.tool.call({ tool: 'mcp__diff-lens__compare', base: 'nope' } as never)
 
+    const detected = await $.tool.call({ tool: 'mcp__diff-lens__compare' } as never)
+
+    expect(String(detected.result)).toContain('origin/main (the detected default): 2 changed files')
     expect(String(set.result)).toContain('origin/main: 2 changed files')
     expect(missing.deny ?? missing.text ?? '').toContain('nope')
   })

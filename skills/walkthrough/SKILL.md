@@ -1,7 +1,7 @@
 ---
 name: walkthrough
 description: Guided walkthrough of a pull request, a branch or uncommitted changes, written so every step links to the exact changed line and diff-lens can show it. Use when asked to "guide me through", "walk me through", "explain", "help me understand" or "show me what changed in" a PR, a branch, these changes, or what an agent just did.
-argument-hint: "[base branch or ref]"
+argument-hint: "[base branch, default: the repo's default branch such as origin/main]"
 allowed-tools: mcp__diff-lens__compare, Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git rev-parse:*), Read, Glob, Grep
 ---
 
@@ -13,11 +13,13 @@ scrolled to the linked line. Write for that. Links carry the "what changed"; you
 ## 1. Fix the change set
 
 - Head is the working tree (committed and uncommitted work). Never switch branches, stash or reset.
-- Base: the ref given as argument; else the pull request's target if one is known; else the repository's default
-  branch. Say which base you used in the first line.
-- Before writing, call the `mcp__diff-lens__compare` tool with that base, so the pane shows the same diff you read.
-  If the tool is not available, ask the reader to type `/diff-lens base <ref>` into the prompt. It is a Claude Code
-  command, not a shell command: write it as inline code, never in a fenced or runnable code block.
+- Base: the ref given as argument. With no argument, call the `mcp__diff-lens__compare` tool without a base: it
+  answers with the default base the pane detected (the repository's default branch, usually `origin/main`). Use that,
+  unless a pull request for this branch is known to target another branch; then use its target.
+- Say which base you used in the first line, and that `/diff-lens:walkthrough <branch>` compares against another one.
+- Call `mcp__diff-lens__compare` with the base you settled on, so the pane shows the same diff you read. If the tool
+  is not available, ask the reader to type `/diff-lens base <ref>` into the prompt. It is a Claude Code command, not a
+  shell command: write it as inline code, never in a fenced or runnable code block.
 - Read the whole diff (`git diff $(git merge-base <base> HEAD)`) and the code around it before writing.
 
 ## 2. Write the walkthrough
