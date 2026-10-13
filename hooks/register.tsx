@@ -173,21 +173,27 @@ const reveal = async ($: EngineInterface, key: string): Promise<string | null> =
       const denied = await toKey()
       if (denied === null) return null
       refusal = denied
-      if (!MISSING.test(denied) && wait >= 250) break
     }
 
     return refusal
   }
-  const first = await poll([120, 150, 250, 300, 400, 500, 600])
+  const first = await poll([100, 120])
   if (first === null) return settle('direct')
-  if (!MISSING.test(first)) return settle(`refused (${first.slice(0, 40)})`)
+  if (!MISSING.test(first)) {
+    const again = await poll([250])
+
+    return settle(again === null ? 'direct' : `refused (${again.slice(0, 40)})`)
+  }
+  await $.ui.scroll({ in: PANE, to: { key: 'list' }, block: 'start' })
+  const second = await poll([80, 120])
+  if (second === null) return settle('top nudge')
   await $.ui.scroll({ in: PANE, to: 'end' })
-  const second = await poll([120, 200, 300, 500])
-  if (second === null) return settle('end nudge')
+  const third = await poll([80, 150, 300, 500, 800])
+  if (third === null) return settle('end nudge')
   await $.ui.scroll({ in: PANE, to: { key: 'list' }, block: 'start' })
   record('scroll: failed', 0)
 
-  return second
+  return third
 }
 
 const flash = async ($: EngineInterface, mine: number, landed: number, startedAt: number) => {
