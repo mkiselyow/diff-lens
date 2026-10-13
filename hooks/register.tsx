@@ -10,6 +10,7 @@ const NAME = 'diff-lens'
 const PANE = 'diff-lens'
 const TITLE = 'Diff lens'
 const TARGET = 'target'
+const COMPARE = 'mcp__diff-lens__compare'
 const CONTEXT = 3
 const ROW_LIMIT = 400
 const PANE_COLUMNS = 150
@@ -309,6 +310,17 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: NAME, description:
         'See changes against your base branch. /diff-lens lists changed files · /diff-lens src/app.ts:47 opens a file at a line · /diff-lens base origin/main picks the base. Tip: ask "guide me through this PR" and click the file links.' })
+    await $.tool.register({
+      name: 'compare',
+      description:
+        'Sets the base branch or ref that the diff-lens pane compares the working tree against. Call it once before a walkthrough of changes, with the same base you diffed against, so file links open the right diff.',
+      inputSchema: {
+        type: 'object',
+        properties: { base: { type: 'string', description: 'Branch, tag or commit, for example origin/main or a1b2c3d.' } },
+        required: ['base'],
+      },
+      isDeferred: false,
+    })
     void recover($)
 
     return next(e)
@@ -339,6 +351,16 @@ export const register: Register = (on, options) => {
     void openFile($, path, target.line)
 
     return { text: `Opened ${path}${target.line === null ? '' : ` at line ${target.line}`}.` }
+  })
+
+  on('tool.call', { tool: COMPARE } as never, async ($: EngineInterface, e: unknown) => {
+    const base = String((e as { base?: unknown }).base ?? '').trim()
+    if (base === '') return { deny: 'Give a base, for example origin/main.' }
+    await chooseBase($, base)
+    const v = await current($)
+    if (v.base !== base) return { deny: v.message || `Base "${base}" was not found in this repository.` }
+
+    return { result: `diff-lens now compares the working tree against ${base}: ${v.stats.length} changed files. Links to those files open in the diff-lens pane.` }
   })
 
   on('tool.call', { tool: 'Edit' }, async ($, e, next) => {

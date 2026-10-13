@@ -2,7 +2,7 @@
 name: walkthrough
 description: Guided walkthrough of a pull request, a branch or uncommitted changes, written so every step links to the exact changed line and diff-lens can show it. Use when asked to "guide me through", "walk me through", "explain", "help me understand" or "show me what changed in" a PR, a branch, these changes, or what an agent just did.
 argument-hint: "[base branch or ref]"
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git rev-parse:*), Read, Glob, Grep
+allowed-tools: mcp__diff-lens__compare, Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git merge-base:*), Bash(git rev-parse:*), Read, Glob, Grep
 ---
 
 # Walkthrough of a change set
@@ -15,7 +15,9 @@ scrolled to the linked line. Write for that. Links carry the "what changed"; you
 - Head is the working tree (committed and uncommitted work). Never switch branches, stash or reset.
 - Base: the ref given as argument; else the pull request's target if one is known; else the repository's default
   branch. Say which base you used in the first line.
-- If diff-lens compares against a different base, tell the reader to run `/diff-lens base <ref>` once.
+- Before writing, call the `mcp__diff-lens__compare` tool with that base, so the pane shows the same diff you read.
+  If the tool is not available, ask the reader to type `/diff-lens base <ref>` into the prompt. It is a Claude Code
+  command, not a shell command: write it as inline code, never in a fenced or runnable code block.
 - Read the whole diff (`git diff $(git merge-base <base> HEAD)`) and the code around it before writing.
 
 ## 2. Write the walkthrough

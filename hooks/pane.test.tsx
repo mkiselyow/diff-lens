@@ -74,6 +74,19 @@ describe('pane', () => {
     await ui.unmount()
   })
 
+  test('lets the model set the base and refuses one that does not exist', async ($, on) => {
+    mock.clock(on)
+    on('session.cwd', async () => ({ value: '/repo' }))
+    on('process.run', async (_, e) => ({ value: answer(e.argv, true) }) as never)
+    on('ui.open', async () => ({ value: {} }) as never)
+
+    const set = await $.tool.call({ tool: 'mcp__diff-lens__compare', base: 'origin/main' } as never)
+    const missing = await $.tool.call({ tool: 'mcp__diff-lens__compare', base: 'nope' } as never)
+
+    expect(String(set.result)).toContain('origin/main: 2 changed files')
+    expect(missing.deny ?? missing.text ?? '').toContain('nope')
+  })
+
   test('says so when the folder is not a git repository', async ($, on) => {
     mock.clock(on)
     on('session.cwd', async () => ({ value: '/tmp' }))
