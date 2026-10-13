@@ -3,7 +3,10 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 const DIFF = ['diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -1,3 +1,3 @@', ' one', '-two', '+TWO', ' three'].join('\n')
 const PANE = { plugin: 'diff-lens', component: 'Pane', requestId: 'diff-lens', props: { title: 'Diff lens', isFocused: false, bodyColumns: 60, placement: 'dock' } } as const
 
+const calls: string[] = []
+
 const answer = (argv: readonly string[], isRepo: boolean) => {
+  calls.push(argv.slice(4).join(' '))
   const args = argv.slice(4)
   const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: '' })
   const fail = { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' }
@@ -50,6 +53,26 @@ describe('pane', () => {
       await ui.unmount()
     })
   }
+
+  test('loads the open file again when the base is chosen', async ($, on) => {
+    mock.clock(on)
+    on('session.cwd', async () => ({ value: '/repo' }))
+    on('process.run', async (_, e) => ({ value: answer(e.argv, true) }) as never)
+    on('ui.open', async () => ({ value: {} }) as never)
+    on('ui.scroll', async () => ({ value: {} }) as never)
+    const diffs = () => calls.filter(call => call.startsWith('diff --no-renames') && call.endsWith('src/a.ts')).length
+
+    await $.command.run({ command: 'diff-lens', args: '' } as never)
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' } as never)
+    await ui.press({ key: 'f0' })
+    const before = diffs()
+    await ui.press({ key: 'base' })
+    await ui.press({ key: 'base0' })
+
+    expect(diffs()).toBe(before + 1)
+    expect(await ui.find({ type: 'Text', text: 'TWO' })).toBeDefined()
+    await ui.unmount()
+  })
 
   test('says so when the folder is not a git repository', async ($, on) => {
     mock.clock(on)

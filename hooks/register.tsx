@@ -48,7 +48,7 @@ const record = (name: string, ms: number) => {
 
 const summarize = (): string => {
   const names = [...new Set(samples.map(sample => sample.name))]
-  if (names.length === 0) return 'diff-lens: no timings recorded yet.'
+  if (names.length === 0) return 'No timings recorded yet.'
 
   return names
     .map(name => {
@@ -186,14 +186,15 @@ const flash = async ($: EngineInterface, mine: number, landed: number) => {
   if (mine === opens) await patch($, { isFlashing: false })
 }
 
-const openFile = async ($: EngineInterface, path: string, line: number | null) => {
+const openFile = async ($: EngineInterface, path: string, line: number | null, isForced = false) => {
   const mine = ++opens
   const startedAt = await $.clock.now()
   const shown = await current($)
-  if (shown.file === path && shown.status === 'ready' && shown.diff !== '') {
+  if (!isForced && shown.file === path && shown.status === 'ready' && shown.diff !== '') {
     const rows = measure(shown).rows
     const landed = line === null ? null : nearestLine(rows, line)
-    await patch($, { line: landed, isFlashing: landed !== null, isListOpen: false, change: -1 })
+    const message = landed !== null && landed !== line ? `Line ${line} is not in this file; showing line ${landed}.` : ''
+    await patch($, { line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, message })
     await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
     if (landed !== null) await flash($, mine, landed)
 
@@ -225,7 +226,8 @@ const openFile = async ($: EngineInterface, path: string, line: number | null) =
           : ''
   await patch($, { diff: isBinary ? '' : loaded.out, isTruncated: loaded.isTruncated, status: 'ready', message, line: landed, isFlashing: landed !== null })
   record('open', (await $.clock.now()) - startedAt)
-  if (landed !== null) await flash($, mine, landed)
+  if (landed === null) return
+  await flash($, mine, landed)
   record('open+scroll', (await $.clock.now()) - startedAt)
 }
 
@@ -278,7 +280,7 @@ const stepChange = async ($: EngineInterface, by: number) => {
 const chooseBase = async ($: EngineInterface, base: string) => {
   await patch($, { isBasePickerOpen: false })
   const v = await refresh($, base)
-  if (v.file !== null && v.base === base) await openFile($, v.file, null)
+  if (v.file !== null && v.base === base) await openFile($, v.file, null, true)
 }
 
 const basename = (path: string): string => path.split('/').slice(-1)[0] ?? path
@@ -299,25 +301,26 @@ export const register: Register = (on, options) => {
     if (args === 'stats') return { text: summarize() }
     if (args.startsWith('base')) {
       const ref = args.slice(4).trim()
-      if (ref === '') return { text: `diff-lens compares against ${(await current($)).base || 'no base yet'}. Use /diff-lens base <ref> to change it.` }
+      if (ref === '') return { text: `Diff lens compares against ${(await current($)).base || 'no base yet'}. Use /diff-lens base <ref> to change it.` }
       await chooseBase($, ref)
       const v = await current($)
 
-      return { text: v.base === ref ? `diff-lens now compares against ${ref}.` : v.message }
+      return { text: v.base === ref ? `Now comparing against ${ref}.` : v.message }
     }
     const v = await refresh($)
     if (args === '') {
       await patch($, { isListOpen: true })
       await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
 
-      return { text: v.status === 'error' ? v.message : `diff-lens: ${v.stats.length} changed files against ${v.base}.` }
+      return { text: v.status === 'error' ? v.message : `${v.stats.length} changed files against ${v.base}.` }
     }
     const target = splitLine(args)
     const path = toRelative(target.path, await $.session.cwd())
-    if (path === null || !v.stats.some(stat => stat.path === path)) return { text: `diff-lens: ${target.path} has no changes against ${v.base}.` }
+    if (path === null || !v.stats.some(stat => stat.path === path)) return { text: `${target.path} has no changes against ${v.base}.` }
+    await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
     void openFile($, path, target.line)
 
-    return { text: `diff-lens: opened ${path}${target.line === null ? '' : ` at line ${target.line}`}.` }
+    return { text: `Opened ${path}${target.line === null ? '' : ` at line ${target.line}`}.` }
   })
 
   on('tool.call', { tool: 'Edit' }, async ($, e, next) => {
@@ -450,7 +453,7 @@ export const register: Register = (on, options) => {
           )}
           {v.file !== null && stat !== undefined && <Box flexShrink={0}>{counts(stat)}</Box>}
           <Box flexGrow={1} />
-          {v.stats.length > 1 && v.file !== null && (
+          {v.stats.length > 1 && at >= 0 && (
             <Box flexShrink={0} flexDirection="row" gap={1}>
               <Text dimColor>
                 {at + 1}/{v.stats.length}
