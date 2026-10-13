@@ -114,4 +114,4 @@ claude --plugin-dir .
 
 ## License
 
-MIT
+[MIT](LICENSE)
