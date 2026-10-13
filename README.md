@@ -16,6 +16,7 @@ Answer `y` to add the marketplace and pick the user scope. The mod then loads in
 
 ## Use
 
+- **`/diff-lens:walkthrough`** (or just ask "guide me through this PR") makes Claude explain the change step by step, with a link to the exact changed line at every step.
 - **Click a link** to a changed file in any reply, for example `src/app.ts:47`. Links to unchanged files open the normal file view, as before.
 - **`/diff-lens`** opens the pane with the list of changed files.
 - **`/diff-lens src/app.ts:47`** opens one file at a line.

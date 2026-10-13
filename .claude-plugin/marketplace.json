@@ -7,7 +7,7 @@
     {
       "name": "diff-lens",
       "source": "./",
-      "description": "See what changed, right where Claude points. Ask Claude to \"guide me through this PR\" and click any file link in its reply: the file opens with its changes against your base branch highlighted, scrolled to the linked line. Commands: /diff-lens (changed files), /diff-lens <file>:<line>, /diff-lens base <ref>.",
+      "description": "See what changed, right where Claude points. Run /diff-lens:walkthrough (or ask \"guide me through this PR\") and click any file link in the reply: the file opens with its changes against your base branch highlighted, scrolled to the linked line. Commands: /diff-lens (changed files), /diff-lens <file>:<line>, /diff-lens base <ref>.",
       "category": "development",
       "keywords": [
         "diff",
