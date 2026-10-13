@@ -100,7 +100,17 @@ export const layout = (
     else parts.push({ rows: [item.row], change: item.change, isTarget: item.isTarget })
   }
 
-  return { parts, changes: changeAt.length, changeAt, start: first, before: first, hidden: total - first - shown.length, hasTarget: targetAt >= first && targetAt < first + limit }
+  const lines = (list: Item[]) => list.reduce((sum, item) => sum + ('fold' in item ? item.count : 1), 0)
+
+  return {
+    parts,
+    changes: changeAt.length,
+    changeAt,
+    start: first,
+    before: lines(items.slice(0, first)),
+    hidden: lines(items.slice(first + shown.length)),
+    hasTarget: targetAt >= first && targetAt < first + limit,
+  }
 }
 
 export const parseNumstat = (out: string): { path: string; added: number; removed: number; isBinary: boolean }[] =>

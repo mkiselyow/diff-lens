@@ -2,7 +2,15 @@
 
 A mod for Claude Code Desktop. Click a file link in a reply and see **that file's changes against your base branch, scrolled to the line**.
 
-When Claude walks you through a pull request or its own edits, its links normally open the plain file. With diff-lens, a link to a changed file opens a pane that shows the file with added and removed lines highlighted, unchanged stretches folded away, and the linked line marked and centred.
+![A walkthrough reply on the left; clicking its link opened the Diff lens pane on the right at the linked line](docs/walkthrough.png)
+
+## The problem it solves
+
+When Claude walks you through a pull request, or through what it just changed, every step points at a file and a line. Clicking that link opens the plain file: you land on the right line but cannot see what changed there. The app's Diff view shows what changed, but a link cannot open it, and it cannot be put on a line.
+
+So you read "this line now retries the scroll", click, and then hunt for the same spot in the diff by hand, for every step.
+
+diff-lens joins the two. A link to a changed file opens a pane that shows the file with added and removed lines highlighted, unchanged stretches folded away, and the linked line marked and centred. The explanation and the change it describes sit side by side.
 
 ## Install
 

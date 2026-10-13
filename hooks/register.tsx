@@ -222,6 +222,7 @@ const load = async ($: EngineInterface, path: string, line: number | null, isFor
     const landed = line === null ? null : nearestLine(rows, line)
     const message = landed !== null && landed !== line ? `Line ${line} is not in this file; showing line ${landed}.` : ''
     const fresh = await loadDiff($, shown, path)
+    if (mine !== opens) return
     const diff = fresh.isFailed || fresh.out === '' ? shown.diff : fresh.out
     await patch($, { diff, line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, shown: -1, message, aim: shown.aim + 1 })
     await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
