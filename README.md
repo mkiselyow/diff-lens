@@ -75,7 +75,11 @@ Everything the mod does, so there are no surprises.
 
 It never fetches, switches branches, commits or writes files. A base name that starts with `-` is refused, so it cannot be read as an option.
 
+**What it passes to git.** Two kinds of value, and nothing else: the base you or Claude chose (a branch, tag or commit name), and file paths taken from git's own list of changed files. No text from the conversation, no file contents and no URLs are passed. None of the commands contacts a remote: the mod never runs `fetch`, `pull`, `push`, `clone` or `ls-remote`.
+
 **Network: none.** The mod makes no network requests and sends nothing anywhere. It does not call any other tool or MCP server.
+
+**What it reads.** The output of the git commands above, and the file links in Claude's replies. It does not read the contents of your prompts or of Claude's tool calls.
 
 **Claude's replies.** On the desktop app, a reply that links to a changed file is drawn by the mod so that a click on that link reaches it. The wording is not changed; file links are rewritten to absolute `file://` addresses. Links to unchanged files are left to the app.
 
