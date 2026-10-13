@@ -6,7 +6,49 @@
   "plugins": [
     {
       "name": "diff-lens",
-      "source": "./"
+      "source": "./",
+      "description": "See what changed, right where Claude points. Ask Claude to \"guide me through this PR\" and click any file link in its reply: the file opens with its changes against your base branch highlighted, scrolled to the linked line. Commands: /diff-lens (changed files), /diff-lens <file>:<line>, /diff-lens base <ref>.",
+      "category": "development",
+      "keywords": [
+        "diff",
+        "diff-viewer",
+        "git-diff",
+        "pull-request",
+        "pr-review",
+        "code-review",
+        "review",
+        "changes",
+        "walkthrough",
+        "jump-to-line",
+        "file-links",
+        "base-branch",
+        "pane",
+        "desktop",
+        "mod"
+      ],
+      "tags": [
+        "diff",
+        "diff-viewer",
+        "git-diff",
+        "pull-request",
+        "pr-review",
+        "code-review",
+        "review",
+        "changes",
+        "walkthrough",
+        "jump-to-line",
+        "file-links",
+        "base-branch",
+        "pane",
+        "desktop",
+        "mod"
+      ],
+      "homepage": "https://github.com/mkiselyow/diff-lens",
+      "license": "MIT",
+      "author": {
+        "name": "Max Kyselov",
+        "url": "https://github.com/mkiselyow"
+      }
     }
   ],
   "description": "diff-lens: see a file's changes against a base branch from any file link in Claude Code Desktop."

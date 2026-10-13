@@ -287,7 +287,8 @@ export const register: Register = (on, options) => {
   settings.base = typeof options?.baseBranch === 'string' ? options.baseBranch.trim() : ''
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: NAME, description: 'Show changes against a base branch: /diff-lens [file[:line] | base <ref> | stats]' })
+    await $.command.register({ name: NAME, description:
+        'See changes against your base branch. /diff-lens lists changed files · /diff-lens src/app.ts:47 opens a file at a line · /diff-lens base origin/main picks the base. Tip: ask "guide me through this PR" and click the file links.' })
     void refresh($)
 
     return next(e)

@@ -1,12 +1,31 @@
 {
   "name": "diff-lens",
   "version": "0.1.0",
-  "description": "Click a file link in a reply to see that file's changes against a base branch, scrolled to the line.",
-  "author": { "name": "Max Kyselov", "url": "https://github.com/mkiselyow" },
+  "description": "See what changed, right where Claude points. Ask Claude to \"guide me through this PR\" and click any file link in its reply: the file opens with its changes against your base branch highlighted, scrolled to the linked line. Commands: /diff-lens (changed files), /diff-lens <file>:<line>, /diff-lens base <ref>.",
+  "author": {
+    "name": "Max Kyselov",
+    "url": "https://github.com/mkiselyow"
+  },
   "homepage": "https://github.com/mkiselyow/diff-lens",
   "repository": "https://github.com/mkiselyow/diff-lens",
   "license": "MIT",
-  "keywords": ["diff", "review", "pull-request", "pane"],
+  "keywords": [
+    "diff",
+    "diff-viewer",
+    "git-diff",
+    "pull-request",
+    "pr-review",
+    "code-review",
+    "review",
+    "changes",
+    "walkthrough",
+    "jump-to-line",
+    "file-links",
+    "base-branch",
+    "pane",
+    "desktop",
+    "mod"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "baseBranch": {
