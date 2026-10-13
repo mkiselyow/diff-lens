@@ -9,7 +9,8 @@ import { fromHref, rewrite, splitLine, toRelative } from './links'
 const NAME = 'diff-lens'
 const PANE = 'diff-lens'
 const TITLE = 'Diff lens'
-const TARGET = 'target'
+const targetKey = (v: LensView): string => `target${v.aim}`
+const changeKey = (start: number, change: number): string => `c${start}x${change}`
 const COMPARE = 'mcp__diff-lens__compare'
 const CONTEXT = 3
 const ROW_LIMIT = 110
@@ -33,6 +34,7 @@ const EMPTY: LensView = {
   expanded: [],
   change: -1,
   shown: -1,
+  aim: 0,
 }
 const view = atom({ plugin: 'diff-lens', key: 'view' } as const, EMPTY)
 
@@ -189,7 +191,7 @@ const reveal = async ($: EngineInterface, key: string): Promise<string | null> =
 }
 
 const flash = async ($: EngineInterface, mine: number, landed: number, startedAt: number) => {
-  const refusal = await reveal($, TARGET)
+  const refusal = await reveal($, targetKey(await current($)))
   record('open+scroll', (await $.clock.now()) - startedAt)
   if (mine !== opens) return
   if (refusal !== null) await patch($, { message: `Could not scroll to line ${landed} (${refusal.slice(0, 80)}); it is marked with ▸.` })
@@ -215,7 +217,7 @@ const load = async ($: EngineInterface, path: string, line: number | null, isFor
     const message = landed !== null && landed !== line ? `Line ${line} is not in this file; showing line ${landed}.` : ''
     const fresh = await loadDiff($, shown, path)
     const diff = fresh.isFailed || fresh.out === '' ? shown.diff : fresh.out
-    await patch($, { diff, line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, shown: -1, message })
+    await patch($, { diff, line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, shown: -1, message, aim: shown.aim + 1 })
     await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
     if (landed !== null) await flash($, mine, landed, startedAt)
 
@@ -245,7 +247,7 @@ const load = async ($: EngineInterface, path: string, line: number | null, isFor
         : loaded.isTruncated
           ? 'This diff is very large; the end of it is cut off.'
           : ''
-  await patch($, { diff: isBinary ? '' : loaded.out, isTruncated: loaded.isTruncated, status: 'ready', message, line: landed, isFlashing: landed !== null })
+  await patch($, { diff: isBinary ? '' : loaded.out, isTruncated: loaded.isTruncated, status: 'ready', message, line: landed, isFlashing: landed !== null, aim: v.aim + 1 })
   record('open', (await $.clock.now()) - startedAt)
   if (landed !== null) await flash($, mine, landed, startedAt)
 }
@@ -301,7 +303,8 @@ const stepChange = async ($: EngineInterface, by: number) => {
   const isDrawn = at >= memo.drawn.start && at < memo.drawn.start + ROW_LIMIT
   await patch($, isDrawn ? { change } : { change, shown: Math.max(0, at - CONTEXT) })
   const run = measure(await current($)).drawn.parts.find((part): part is Run => 'rows' in part && part.change === change)
-  await reveal($, run?.isTarget ? TARGET : `c${change}`)
+  const now = await current($)
+  await reveal($, run?.isTarget ? targetKey(now) : changeKey(measure(now).drawn.start, change))
 }
 
 const chooseBase = async ($: EngineInterface, base: string) => {
@@ -444,7 +447,7 @@ export const register: Register = (on, options) => {
     const drawRun = (run: Run, index: number) => (
       <Box key={`run${index}`} flexDirection="column">
         {run.rows.map((row, i) => {
-          const key = run.isTarget ? TARGET : run.change !== null && i === 0 ? `c${run.change}` : undefined
+          const key = run.isTarget ? targetKey(v) : run.change !== null && i === 0 ? changeKey(drawn.start, run.change) : undefined
 
           return (
             <Box flexDirection="row" backgroundColor={run.isTarget && v.isFlashing ? 'suggestion' : tint(row.kind)}>

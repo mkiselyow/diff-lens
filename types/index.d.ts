@@ -19,6 +19,7 @@ export type LensView = {
   expanded: number[]
   change: number
   shown: number
+  aim: number
 }
 
 declare module 'claude-code' {
