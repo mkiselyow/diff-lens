@@ -12,7 +12,7 @@ const TITLE = 'Diff lens'
 const TARGET = 'target'
 const COMPARE = 'mcp__diff-lens__compare'
 const CONTEXT = 3
-const ROW_LIMIT = 150
+const ROW_LIMIT = 110
 const PANE_COLUMNS = 150
 const FULL_CONTEXT = '-U100000'
 const FALLBACK_BASES = ['origin/main', 'origin/master', 'origin/develop', 'origin/release', 'main', 'master']
@@ -164,35 +164,28 @@ const reveal = async ($: EngineInterface, key: string): Promise<string | null> =
 
     return null
   }
-  let refusal = ''
-  for (const wait of [120, 150, 250]) {
-    await $.clock.sleep(wait)
-    const denied = await toKey()
-    if (denied === null) return settle('direct')
-    refusal = denied
-  }
-  if (!MISSING.test(refusal)) return settle(`refused (${refusal.slice(0, 40)})`)
-  const nudges: [string, ('start' | 'end')[]][] = [
-    ['end nudge', ['end']],
-    ['end+start nudge', ['end', 'start']],
-  ]
-  for (const [name, edges] of nudges) {
-    for (const edge of edges) {
-      await $.ui.scroll({ in: PANE, to: edge })
-      await $.clock.sleep(90)
+  const poll = async (waits: number[]): Promise<string | null> => {
+    let refusal = ''
+    for (const wait of waits) {
+      await $.clock.sleep(wait)
+      const denied = await toKey()
+      if (denied === null) return null
+      refusal = denied
+      if (!MISSING.test(denied) && wait >= 250) break
     }
-    const denied = await toKey()
-    if (denied === null) {
-      await $.clock.sleep(180)
-      await toKey()
 
-      return settle(name)
-    }
-    refusal = denied
+    return refusal
   }
+  const first = await poll([120, 150, 250, 300, 400, 500, 600])
+  if (first === null) return settle('direct')
+  if (!MISSING.test(first)) return settle(`refused (${first.slice(0, 40)})`)
+  await $.ui.scroll({ in: PANE, to: 'end' })
+  const second = await poll([120, 200, 300, 500])
+  if (second === null) return settle('end nudge')
+  await $.ui.scroll({ in: PANE, to: { key: 'list' }, block: 'start' })
   record('scroll: failed', 0)
 
-  return refusal
+  return second
 }
 
 const flash = async ($: EngineInterface, mine: number, landed: number, startedAt: number) => {
