@@ -61,7 +61,18 @@ The base can be any branch, tag or commit. By default it is, in order: the `base
 
 To compare `feature-123` with `part-of-feature-1`, check out `feature-123` and set the base to `part-of-feature-1`. The compared side is always what you have checked out; two branches that are both not checked out cannot be compared. A remote branch has to be fetched first, and the base is chosen anew in each session.
 
-diff-lens only reads: it runs `git diff`, `git merge-base`, `git ls-files`, `git rev-parse` and `git symbolic-ref`. It never fetches, switches branches or writes, and it makes no network calls.
+## What it does on your machine
+
+Everything the mod does, so there are no surprises:
+
+- **Runs git, read-only:** `git diff`, `git merge-base`, `git ls-files`, `git rev-parse` and `git symbolic-ref`, in the session's folder. It never fetches, switches branches, commits or writes files.
+- **Redraws Claude's replies that contain file links,** on the desktop app only, so that a click on a link to a changed file reaches the mod. The text is unchanged; only the link targets are rewritten to absolute file addresses.
+- **Opens its own pane** and scrolls it.
+- **Asks the desktop app to open a file** in its normal file view when you click a link to an unchanged file.
+- **Puts `path:line` into your prompt box** when you click a line number in the pane. It never sends a prompt.
+- **Gives Claude one tool, `compare`,** which sets or reports the base branch.
+- **Re-reads the diff** after Claude edits a file or runs a shell command.
+- **Keeps timing numbers in memory** for `/diff-lens stats`. Nothing is stored on disk and nothing leaves your machine: the mod makes no network calls.
 
 ## Limits
 
