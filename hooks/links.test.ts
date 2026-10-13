@@ -28,6 +28,7 @@ describe('rewrite', () => {
 
     expect(out.changed).toBe(1)
     expect(out.hrefs).toEqual(['file:///repo/src/a.ts#L47'])
+    expect(out.pressable).toEqual(['file:///repo/src/a.ts#L47'])
     expect(out.text).toBe('See [a.ts:47](file:///repo/src/a.ts#L47).')
     expect(fromHref(out.hrefs[0] ?? '', CWD)).toEqual({ path: 'src/a.ts', line: 47 })
   })
@@ -36,6 +37,8 @@ describe('rewrite', () => {
     const out = rewrite('See [other](src/other.ts:3).', CWD, isChanged)
 
     expect(out.changed).toBe(0)
+    expect(out.pressable).toEqual([])
+    expect(out.hrefs).toEqual(['file:///repo/src/other.ts#L3'])
   })
 
   test('leaves web links, anchors and code untouched', async () => {

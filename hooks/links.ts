@@ -1,5 +1,5 @@
 export type Target = { path: string; line: number | null }
-export type Rewritten = { text: string; hrefs: string[]; changed: number }
+export type Rewritten = { text: string; hrefs: string[]; pressable: string[]; changed: number }
 
 const SCHEME = 'file://'
 const LINK = /\]\(([^)\s]+)\)/g
@@ -40,6 +40,7 @@ export const fromHref = (href: string, cwd: string): Target | null => {
 
 export const rewrite = (text: string, cwd: string, isChanged: (path: string) => boolean): Rewritten => {
   const hrefs: string[] = []
+  const pressable: string[] = []
   let changed = 0
   const rewriteProse = (prose: string): string =>
     prose.replace(LINK, (whole: string, raw: string) => {
@@ -48,8 +49,11 @@ export const rewrite = (text: string, cwd: string, isChanged: (path: string) => 
       const target = splitLine(isFile ? raw.slice(SCHEME.length) : raw)
       const path = toRelative(target.path, cwd)
       if (path === null) return whole
-      if (isChanged(path)) changed++
       const href = toHref(cwd, { path, line: target.line })
+      if (isChanged(path)) {
+        changed++
+        if (!pressable.includes(href)) pressable.push(href)
+      }
       if (!hrefs.includes(href)) hrefs.push(href)
 
       return `](${href})`
@@ -57,5 +61,5 @@ export const rewrite = (text: string, cwd: string, isChanged: (path: string) => 
   const pieces = text.split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/)
   const out = pieces.map((piece, i) => (i % 2 === 1 ? piece : rewriteProse(piece))).join('')
 
-  return { text: out, hrefs, changed }
+  return { text: out, hrefs, pressable, changed }
 }

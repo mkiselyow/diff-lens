@@ -15,7 +15,7 @@ const COMPARE = 'mcp__diff-lens__compare'
 const CONTEXT = 3
 const ROW_LIMIT = 110
 const PANE_COLUMNS = 150
-const FULL_CONTEXT = '-U100000'
+const GIT_TIMEOUT = 20000
 const FALLBACK_BASES = ['origin/main', 'origin/master', 'origin/develop', 'origin/release', 'main', 'master']
 const EMPTY: LensView = {
   base: '',
@@ -71,11 +71,11 @@ const current = async ($: EngineInterface): Promise<LensView> => ({ ...EMPTY, ..
 
 const patch = ($: EngineInterface, change: Partial<LensView>) => update($, view, v => ({ ...EMPTY, ...v, ...change }))
 
-const git = async ($: EngineInterface, name: string, args: string[]) => {
+const timed = async ($: EngineInterface, name: string, run: (cwd: string) => Promise<{ exitCode: number; stdout: string; stderr: string; isStdoutTruncated?: boolean }>) => {
   const cwd = await $.session.cwd()
   const startedAt = await $.clock.now()
   try {
-    const ran = await $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', ...args], { cwd, timeoutMs: 20000 })
+    const ran = await run(cwd)
     record(`git ${name}`, (await $.clock.now()) - startedAt)
 
     return { code: ran.exitCode, out: ran.stdout, err: ran.stderr.trim(), isTruncated: ran.isStdoutTruncated === true }
@@ -84,11 +84,19 @@ const git = async ($: EngineInterface, name: string, args: string[]) => {
   }
 }
 
-const exists = async ($: EngineInterface, ref: string) => (await git($, 'verify', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])).code === 0
+const exists = async ($: EngineInterface, ref: string) =>
+  !ref.startsWith('-') &&
+  (await timed($, 'verify', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )).code === 0
 
 const findBases = async ($: EngineInterface, preferred: string): Promise<string[]> => {
-  const head = await git($, 'origin-head', ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])
-  const upstream = await git($, 'upstream', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])
+  const head = await timed($, 'origin-head', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )
+  const upstream = await timed($, 'upstream', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )
   const wanted = [preferred, settings.base, head.code === 0 ? head.out.trim() : '', ...FALLBACK_BASES, upstream.code === 0 ? upstream.out.trim() : '']
   const bases: string[] = []
   for (const ref of wanted) {
@@ -100,7 +108,9 @@ const findBases = async ($: EngineInterface, preferred: string): Promise<string[
 
 const refresh = async ($: EngineInterface, wanted?: string): Promise<LensView> => {
   const before = await current($)
-  const inside = await git($, 'inside', ['rev-parse', '--is-inside-work-tree'])
+  const inside = await timed($, 'inside', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'rev-parse', '--is-inside-work-tree'], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )
   if (inside.code !== 0) {
     await patch($, { status: 'error', message: 'This folder is not a git repository.', stats: [], bases: [] })
 
@@ -118,10 +128,16 @@ const refresh = async ($: EngineInterface, wanted?: string): Promise<LensView> =
 
     return current($)
   }
-  const merge = await git($, 'merge-base', ['merge-base', base, 'HEAD'])
+  const merge = await timed($, 'merge-base', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'merge-base', base, 'HEAD'], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )
   const mergeBase = merge.code === 0 ? merge.out.trim() : base
-  const tracked = await git($, 'numstat', ['diff', '--numstat', '-z', '--no-renames', mergeBase])
-  const others = await git($, 'untracked', ['ls-files', '--others', '--exclude-standard', '-z'])
+  const tracked = await timed($, 'numstat', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'diff', '--numstat', '-z', '--no-renames', mergeBase], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )
+  const others = await timed($, 'untracked', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'ls-files', '--others', '--exclude-standard', '-z'], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )
   const stats: FileStat[] = parseNumstat(tracked.out).map(stat => ({ ...stat, isUntracked: false }))
   for (const path of others.out.split('\u0000').filter(Boolean).slice(0, 200)) {
     stats.push({ path, added: 0, removed: 0, isBinary: false, isUntracked: true })
@@ -135,8 +151,12 @@ const refresh = async ($: EngineInterface, wanted?: string): Promise<LensView> =
 const loadDiff = async ($: EngineInterface, v: LensView, path: string) => {
   const stat = v.stats.find(one => one.path === path)
   const ran = stat?.isUntracked
-    ? await git($, 'diff untracked', ['diff', '--no-index', FULL_CONTEXT, '--', '/dev/null', path])
-    : await git($, 'diff', ['diff', '--no-renames', FULL_CONTEXT, v.mergeBase, '--', path])
+    ? await timed($, 'diff untracked', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'diff', '--no-index', '-U100000', '--', '/dev/null', path], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )
+    : await timed($, 'diff', cwd =>
+    $.process.run(['git', '--no-pager', '-c', 'core.quotepath=off', 'diff', '--no-renames', '-U100000', v.mergeBase, '--', path], { cwd, timeoutMs: GIT_TIMEOUT }),
+  )
   const isFailed = ran.code !== 0 && !(stat?.isUntracked && ran.code === 1)
 
   return { ...ran, isFailed, stat }
@@ -274,24 +294,10 @@ const queueReload = async ($: EngineInterface) => {
   await reload($)
 }
 
-const showInFiles = async ($: EngineInterface, path: string, line: number | null) => {
-  try {
-    await $.mcp.call('ccd_view', 'show_pane', line === null ? { pane: 'file', path } : { pane: 'file', path, line })
-  } catch {
-    $.ui.toast(`${NAME}: could not open ${path}`)
-  }
-}
-
 const recover = async ($: EngineInterface) => {
   const v = await refresh($)
   if (v.isFlashing) await patch($, { isFlashing: false })
   if (v.status === 'loading' && v.file !== null) await openFile($, v.file, v.line, true)
-}
-
-const follow = async ($: EngineInterface, path: string, line: number | null) => {
-  const v = await current($)
-  if (v.stats.some(stat => stat.path === path)) await openFile($, path, line)
-  else await showInFiles($, path, line)
 }
 
 const stepFile = async ($: EngineInterface, by: number) => {
@@ -413,19 +419,19 @@ export const register: Register = (on, options) => {
     const cwd = await $.session.cwd()
     const startedAt = Date.now()
     const changed = new Set(v.stats.map(stat => stat.path))
-    const { text, hrefs, changed: hits } = rewrite(e.props.text, cwd, path => changed.has(path))
+    const { text, pressable, changed: hits } = rewrite(e.props.text, cwd, path => changed.has(path))
     record('rewrite links', Date.now() - startedAt)
-    if (hits === 0 || hrefs.length > 256) return next(e)
+    if (hits === 0 || pressable.length > 256) return next(e)
     const { Markdown } = $.ui.resolve(e)
 
     return (
       <Markdown
         key="reply"
         text={text}
-        pressableLinks={hrefs}
+        pressableLinks={pressable}
         onLinkPress={link => {
           const target = fromHref(link.href, cwd)
-          if (target !== null) void follow($, target.path, target.line)
+          if (target !== null) void openFile($, target.path, target.line)
         }}
       />
     )

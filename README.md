@@ -34,7 +34,7 @@ New sessions use the new version.
 ## Use
 
 - **`/diff-lens:walkthrough`** (or just ask "guide me through this PR") makes Claude explain the change step by step, with a link to the exact changed line at every step. It compares against the repository's default branch; add a branch to compare against another one, for example `/diff-lens:walkthrough part-of-feature-1`.
-- **Click a link** to a changed file in any reply, for example `src/app.ts:47`. Links to unchanged files open the normal file view, as before.
+- **Click a link** to a changed file in any reply, for example `src/app.ts:47`. Links to unchanged files are left to the app, as before.
 - **`/diff-lens`** opens the pane with the list of changed files.
 - **`/diff-lens src/app.ts:47`** opens one file at a line.
 - **`/diff-lens base origin/release`** changes the branch to compare against.
@@ -63,16 +63,31 @@ To compare `feature-123` with `part-of-feature-1`, check out `feature-123` and s
 
 ## What it does on your machine
 
-Everything the mod does, so there are no surprises:
+Everything the mod does, so there are no surprises.
 
-- **Runs git, read-only:** `git diff`, `git merge-base`, `git ls-files`, `git rev-parse` and `git symbolic-ref`, in the session's folder. It never fetches, switches branches, commits or writes files.
-- **Redraws Claude's replies that contain file links,** on the desktop app only, so that a click on a link to a changed file reaches the mod. The text is unchanged; only the link targets are rewritten to absolute file addresses.
-- **Opens its own pane** and scrolls it.
-- **Asks the desktop app to open a file** in its normal file view when you click a link to an unchanged file.
-- **Puts `path:line` into your prompt box** when you click a line number in the pane. It never sends a prompt.
-- **Gives Claude one tool, `compare`,** which sets or reports the base branch.
-- **Re-reads the diff** after Claude edits a file or runs a shell command.
-- **Keeps timing numbers in memory** for `/diff-lens stats`. Nothing is stored on disk and nothing leaves your machine: the mod makes no network calls.
+**Programs it starts: `git` only, read-only.** Each command is written out in the source at the place it is run, in the session's folder, with no shell:
+
+- `git rev-parse` (is this a repository, does a branch exist, what is the upstream)
+- `git symbolic-ref` (the remote's default branch)
+- `git merge-base` (where the branch split from the base)
+- `git diff --numstat` and `git diff` (which files changed, and one file's changes)
+- `git ls-files --others` (new untracked files)
+
+It never fetches, switches branches, commits or writes files. A base name that starts with `-` is refused, so it cannot be read as an option.
+
+**Network: none.** The mod makes no network requests and sends nothing anywhere. It does not call any other tool or MCP server.
+
+**Claude's replies.** On the desktop app, a reply that links to a changed file is drawn by the mod so that a click on that link reaches it. The wording is not changed; file links are rewritten to absolute `file://` addresses. Links to unchanged files are left to the app.
+
+**Its own pane.** It opens the Diff lens pane and scrolls it.
+
+**Your prompt box.** Clicking a line number in the pane puts `path:line` into the prompt box. The mod never sends a prompt.
+
+**One tool for Claude: `compare`.** The mod registers this tool and answers it itself. It sets or reports the base branch and nothing else.
+
+**Claude's tool calls.** The mod watches Claude's `Edit`, `Write` and `Bash` calls for one reason: to re-read the diff afterwards. It passes every call through unchanged and never blocks or rewrites one.
+
+**Memory only.** Timing numbers for `/diff-lens stats` are kept in memory and are gone when the session ends.
 
 ## Limits
 
