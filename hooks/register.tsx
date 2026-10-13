@@ -159,27 +159,34 @@ const reveal = async ($: EngineInterface, key: string): Promise<string | null> =
 
     return 'deny' in moved && moved.deny ? String(moved.deny) : null
   }
+  const settle = async (name: string) => {
+    record(`scroll: ${name}`, 0)
+
+    return null
+  }
+  let refusal = ''
+  for (const wait of [120, 150, 250]) {
+    await $.clock.sleep(wait)
+    const denied = await toKey()
+    if (denied === null) return settle('direct')
+    refusal = denied
+  }
+  if (!MISSING.test(refusal)) return settle(`refused (${refusal.slice(0, 40)})`)
   const nudges: [string, ('start' | 'end')[]][] = [
-    ['direct', []],
     ['end nudge', ['end']],
     ['end+start nudge', ['end', 'start']],
   ]
-  let refusal = ''
-  await $.clock.sleep(120)
   for (const [name, edges] of nudges) {
     for (const edge of edges) {
       await $.ui.scroll({ in: PANE, to: edge })
       await $.clock.sleep(90)
     }
     const denied = await toKey()
-    if (denied === null || !MISSING.test(denied)) {
-      record(`scroll: ${denied === null ? name : 'nothing to scroll'}`, 0)
-      if (edges.length > 0) {
-        await $.clock.sleep(180)
-        await toKey()
-      }
+    if (denied === null) {
+      await $.clock.sleep(180)
+      await toKey()
 
-      return null
+      return settle(name)
     }
     refusal = denied
   }
@@ -213,7 +220,9 @@ const load = async ($: EngineInterface, path: string, line: number | null, isFor
     const rows = measure(shown).rows
     const landed = line === null ? null : nearestLine(rows, line)
     const message = landed !== null && landed !== line ? `Line ${line} is not in this file; showing line ${landed}.` : ''
-    await patch($, { line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, shown: -1, message })
+    const fresh = await loadDiff($, shown, path)
+    const diff = fresh.isFailed || fresh.out === '' ? shown.diff : fresh.out
+    await patch($, { diff, line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, shown: -1, message })
     await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
     if (landed !== null) await flash($, mine, landed, startedAt)
 

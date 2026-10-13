@@ -1,6 +1,6 @@
 {
   "name": "diff-lens",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "See what changed, right where Claude points. Run /diff-lens:walkthrough (or ask \"guide me through this PR\") and click any file link in the reply: the file opens with its changes against your base branch highlighted, scrolled to the linked line. Commands: /diff-lens (changed files), /diff-lens <file>:<line>, /diff-lens base <ref>.",
   "author": {
     "name": "Max Kyselov",
