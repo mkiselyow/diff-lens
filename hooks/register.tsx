@@ -146,47 +146,61 @@ const measure = (v: LensView): { rows: Row[]; drawn: Layout } => {
   return memo
 }
 
-const reveal = async ($: EngineInterface, key: string): Promise<boolean> => {
-  const toKey = async () => {
+const MISSING = /no element|not drawn|drawn under/i
+
+const reveal = async ($: EngineInterface, key: string): Promise<string | null> => {
+  const toKey = async (): Promise<string | null> => {
     const moved = await $.ui.scroll({ in: PANE, to: { key }, block: 'center' })
 
-    return !('deny' in moved && moved.deny)
+    return 'deny' in moved && moved.deny ? String(moved.deny) : null
   }
   const nudges: [string, ('start' | 'end')[]][] = [
     ['direct', []],
     ['end nudge', ['end']],
     ['end+start nudge', ['end', 'start']],
   ]
+  let refusal = ''
   await $.clock.sleep(120)
   for (const [name, edges] of nudges) {
     for (const edge of edges) {
       await $.ui.scroll({ in: PANE, to: edge })
       await $.clock.sleep(90)
     }
-    if (await toKey()) {
-      record(`scroll: ${name}`, 0)
+    const denied = await toKey()
+    if (denied === null || !MISSING.test(denied)) {
+      record(`scroll: ${denied === null ? name : 'nothing to scroll'}`, 0)
       if (edges.length > 0) {
         await $.clock.sleep(180)
         await toKey()
       }
 
-      return true
+      return null
     }
+    refusal = denied
   }
   record('scroll: failed', 0)
 
-  return false
+  return refusal
 }
 
-const flash = async ($: EngineInterface, mine: number, landed: number) => {
-  const isShown = await reveal($, TARGET)
+const flash = async ($: EngineInterface, mine: number, landed: number, startedAt: number) => {
+  const refusal = await reveal($, TARGET)
+  record('open+scroll', (await $.clock.now()) - startedAt)
   if (mine !== opens) return
-  if (!isShown) await patch($, { message: `Could not scroll to line ${landed}; it is marked with ▸.` })
+  if (refusal !== null) await patch($, { message: `Could not scroll to line ${landed} (${refusal.slice(0, 80)}); it is marked with ▸.` })
   await $.clock.sleep(1200)
   if (mine === opens) await patch($, { isFlashing: false })
 }
 
 const openFile = async ($: EngineInterface, path: string, line: number | null, isForced = false) => {
+  try {
+    await load($, path, line, isForced)
+  } catch (error) {
+    await patch($, { status: 'error', message: `Could not open ${path}: ${String(error).slice(0, 120)}` })
+  }
+}
+
+const load = async ($: EngineInterface, path: string, line: number | null, isForced: boolean) => {
   const mine = ++opens
   const startedAt = await $.clock.now()
   const shown = await current($)
@@ -196,7 +210,7 @@ const openFile = async ($: EngineInterface, path: string, line: number | null, i
     const message = landed !== null && landed !== line ? `Line ${line} is not in this file; showing line ${landed}.` : ''
     await patch($, { line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, message })
     await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
-    if (landed !== null) await flash($, mine, landed)
+    if (landed !== null) await flash($, mine, landed, startedAt)
 
     return
   }
@@ -226,9 +240,7 @@ const openFile = async ($: EngineInterface, path: string, line: number | null, i
           : ''
   await patch($, { diff: isBinary ? '' : loaded.out, isTruncated: loaded.isTruncated, status: 'ready', message, line: landed, isFlashing: landed !== null })
   record('open', (await $.clock.now()) - startedAt)
-  if (landed === null) return
-  await flash($, mine, landed)
-  record('open+scroll', (await $.clock.now()) - startedAt)
+  if (landed !== null) await flash($, mine, landed, startedAt)
 }
 
 const reload = async ($: EngineInterface) => {
@@ -252,6 +264,12 @@ const showInFiles = async ($: EngineInterface, path: string, line: number | null
   } catch {
     $.ui.toast(`${NAME}: could not open ${path}`)
   }
+}
+
+const recover = async ($: EngineInterface) => {
+  const v = await refresh($)
+  if (v.isFlashing) await patch($, { isFlashing: false })
+  if (v.status === 'loading' && v.file !== null) await openFile($, v.file, v.line, true)
 }
 
 const follow = async ($: EngineInterface, path: string, line: number | null) => {
@@ -291,7 +309,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: NAME, description:
         'See changes against your base branch. /diff-lens lists changed files · /diff-lens src/app.ts:47 opens a file at a line · /diff-lens base origin/main picks the base. Tip: ask "guide me through this PR" and click the file links.' })
-    void refresh($)
+    void recover($)
 
     return next(e)
   })
@@ -404,7 +422,9 @@ export const register: Register = (on, options) => {
                 <Button key={key} plain dimColor label={String(row.n)} onPress={() => cite(row)} />
               </Box>
               <Box width={3} flexShrink={0} justifyContent="center">
-                <Text color={run.isTarget ? 'suggestion' : ink(row.kind)}>{run.isTarget ? '▸' : row.kind}</Text>
+                <Text bold={run.isTarget} color={run.isTarget ? (v.isFlashing ? 'text' : 'suggestion') : ink(row.kind)}>
+                  {run.isTarget ? '▸' : row.kind}
+                </Text>
               </Box>
               <Text wrap="truncate-end">{row.text === '' ? ' ' : row.text}</Text>
             </Box>
@@ -487,7 +507,13 @@ export const register: Register = (on, options) => {
             {v.message}
           </Text>
         )}
-        {v.status === 'loading' && <Text dimColor>Loading…</Text>}
+        {v.status === 'loading' && (
+          <Box flexDirection="row" gap={1}>
+            <Text dimColor>Loading…</Text>
+            {v.file !== null && <Button key="retry" plain dimColor label="Retry" onPress={() => void openFile($, v.file ?? '', v.line, true)} />}
+          </Box>
+        )}
+        {v.status === 'error' && v.file !== null && <Button key="retryError" plain label="Try again" onPress={() => void openFile($, v.file ?? '', v.line, true)} />}
         {v.status !== 'error' && v.stats.length === 0 && <Text dimColor>No changes against {v.base || 'the base branch'}.</Text>}
         {v.status === 'idle' && v.stats.length > 0 && v.file === null && <Text dimColor>Click a file link in a reply, or pick a file below.</Text>}
         {v.isListOpen && (
