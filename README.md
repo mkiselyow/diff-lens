@@ -47,7 +47,7 @@ diff-lens only reads: it runs `git diff`, `git merge-base`, `git ls-files` and `
 - **Desktop first.** Link clicks are handled on Claude Code Desktop only. In the terminal the pane and the commands work, without polish.
 - **No syntax colours.** The mod API has no way to draw coloured code with per-line backgrounds, so code is drawn as plain text in the app's text font.
 - **Renames show as a removed file and an added file.**
-- **Very large diffs** draw the 400 lines around the changes or the linked line, and say how many were left out.
+- **Large diffs are paged.** The pane draws 150 lines at a time around the changes or the linked line, with "earlier" and "more" controls; the desktop app does not accept much larger drawings.
 - **Early-access feature.** Mods are new: the API can change between Claude Code releases, and Anthropic turns the feature on per account. If the install succeeds but links and `/diff-lens` do nothing, mods are probably not enabled for your account yet. Tested with Claude Code 2.1.292 on macOS.
 
 ## Develop

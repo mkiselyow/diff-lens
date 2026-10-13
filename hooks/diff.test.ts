@@ -71,7 +71,7 @@ describe('layout', () => {
   test('shows a stretch too short to be worth folding', async () => {
     const drawn = layout(parse(DIFF), null, [], 1, 400)
 
-    expect(runs(drawn.parts)[0]?.rows.map(row => row.text)).toEqual(['one'])
+    expect(runs(drawn.parts)[0]?.rows.map(row => row.text)).toEqual(['one', 'two'])
   })
 
   test('expands a fold that was opened', async () => {
@@ -101,9 +101,29 @@ describe('layout', () => {
     const drawn = layout(parse(big), 900, [], 3, 100)
     const rows = runs(drawn.parts).flatMap(run => run.rows)
 
-    expect(rows.length).toBeLessThanOrEqual(100)
-    expect(drawn.hidden).toBe(1000 - rows.length)
+    expect(rows).toHaveLength(100)
+    expect(drawn.before + drawn.hidden).toBe(900)
     expect(rows.some(row => row.n === 900)).toBe(true)
+  })
+
+  test('pages through a large file from a given start', async () => {
+    const big = `@@ -0,0 +1,1000 @@\n${Array.from({ length: 1000 }, (_, i) => `+line ${i + 1}`).join('\n')}`
+    const first = layout(parse(big), null, [], 3, 100)
+    const next = layout(parse(big), null, [], 3, 100, first.start + 100)
+    const last = layout(parse(big), null, [], 3, 100, 5000)
+
+    expect(runs(first.parts)[0]?.rows[0]?.n).toBe(1)
+    expect(runs(next.parts)[0]?.rows[0]?.n).toBe(101)
+    expect(next.before).toBe(100)
+    expect(last.hidden).toBe(0)
+    expect(runs(last.parts).flatMap(run => run.rows)).toHaveLength(100)
+  })
+
+  test('keeps an opened fold open across all of its lines', async () => {
+    const drawn = layout(parse(DIFF), null, [6], 1, 400)
+    const kept = runs(drawn.parts).flatMap(run => run.rows).filter(row => row.kind === ' ')
+
+    expect(kept.map(row => row.text)).toEqual(['one', 'two', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven'])
   })
 })
 

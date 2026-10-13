@@ -12,7 +12,7 @@ const TITLE = 'Diff lens'
 const TARGET = 'target'
 const COMPARE = 'mcp__diff-lens__compare'
 const CONTEXT = 3
-const ROW_LIMIT = 400
+const ROW_LIMIT = 150
 const PANE_COLUMNS = 150
 const FULL_CONTEXT = '-U100000'
 const FALLBACK_BASES = ['origin/main', 'origin/master', 'origin/develop', 'origin/release', 'main', 'master']
@@ -32,12 +32,16 @@ const EMPTY: LensView = {
   isBasePickerOpen: false,
   expanded: [],
   change: -1,
-  shown: 0,
+  shown: -1,
 }
 const view = atom({ plugin: 'diff-lens', key: 'view' } as const, EMPTY)
 
 const samples: { name: string; ms: number }[] = []
-const memo: { key: string; rows: Row[]; drawn: Layout } = { key: '', rows: [], drawn: { parts: [], changes: 0, hidden: 0, hasTarget: false } }
+const memo: { key: string; rows: Row[]; drawn: Layout } = {
+  key: '',
+  rows: [],
+  drawn: { parts: [], changes: 0, changeAt: [], start: 0, before: 0, hidden: 0, hasTarget: false },
+}
 const settings = { base: '' }
 let isRefreshQueued = false
 let opens = 0
@@ -137,11 +141,11 @@ const loadDiff = async ($: EngineInterface, v: LensView, path: string) => {
 }
 
 const measure = (v: LensView): { rows: Row[]; drawn: Layout } => {
-  const key = `${v.diff.length}:${v.line}:${v.expanded.join(',')}:${v.file}:${v.mergeBase}`
+  const key = `${v.diff.length}:${v.line}:${v.expanded.join(',')}:${v.file}:${v.mergeBase}:${v.shown}`
   if (memo.key !== key || memo.rows.length === 0) {
     memo.key = key
     memo.rows = parse(v.diff)
-    memo.drawn = layout(memo.rows, v.line, v.expanded, CONTEXT, ROW_LIMIT)
+    memo.drawn = layout(memo.rows, v.line, v.expanded, CONTEXT, ROW_LIMIT, v.shown < 0 ? null : v.shown)
   }
 
   return memo
@@ -209,13 +213,13 @@ const load = async ($: EngineInterface, path: string, line: number | null, isFor
     const rows = measure(shown).rows
     const landed = line === null ? null : nearestLine(rows, line)
     const message = landed !== null && landed !== line ? `Line ${line} is not in this file; showing line ${landed}.` : ''
-    await patch($, { line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, message })
+    await patch($, { line: landed, isFlashing: landed !== null, isListOpen: false, change: -1, shown: -1, message })
     await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
     if (landed !== null) await flash($, mine, landed, startedAt)
 
     return
   }
-  await patch($, { file: path, line: null, diff: '', status: 'loading', message: '', isListOpen: false, isBasePickerOpen: false, expanded: [], change: -1 })
+  await patch($, { file: path, line: null, diff: '', status: 'loading', message: '', isListOpen: false, isBasePickerOpen: false, expanded: [], change: -1, shown: -1 })
   await $.ui.open({ id: PANE, title: TITLE, columns: PANE_COLUMNS })
   const before = await current($)
   const v = before.mergeBase === '' || !before.stats.some(stat => stat.path === path) ? await refresh($) : before
@@ -288,11 +292,13 @@ const stepFile = async ($: EngineInterface, by: number) => {
 
 const stepChange = async ($: EngineInterface, by: number) => {
   const v = await current($)
-  const { drawn } = memo
-  if (drawn.changes === 0) return
-  const change = Math.max(0, Math.min(drawn.changes - 1, v.change + by))
-  const run = drawn.parts.find((part): part is Run => 'rows' in part && part.change === change)
-  await patch($, { change })
+  const { changes, changeAt } = memo.drawn
+  if (changes === 0) return
+  const change = Math.max(0, Math.min(changes - 1, v.change + by))
+  const at = changeAt[change] ?? 0
+  const isDrawn = at >= memo.drawn.start && at < memo.drawn.start + ROW_LIMIT
+  await patch($, isDrawn ? { change } : { change, shown: Math.max(0, at - CONTEXT) })
+  const run = measure(await current($)).drawn.parts.find((part): part is Run => 'rows' in part && part.change === change)
   await reveal($, run?.isTarget ? TARGET : `c${change}`)
 }
 
@@ -443,11 +449,9 @@ export const register: Register = (on, options) => {
               <Box width={width} flexShrink={0} justifyContent="flex-end">
                 <Button key={key} plain dimColor label={String(row.n)} onPress={() => cite(row)} />
               </Box>
-              <Box width={3} flexShrink={0} justifyContent="center">
-                <Text bold={run.isTarget} color={run.isTarget ? (v.isFlashing ? 'text' : 'suggestion') : ink(row.kind)}>
-                  {run.isTarget ? '▸' : row.kind}
-                </Text>
-              </Box>
+              <Text bold={run.isTarget} color={run.isTarget ? (v.isFlashing ? 'text' : 'suggestion') : ink(row.kind)}>
+                {run.isTarget ? ' ▸ ' : ` ${row.kind} `}
+              </Text>
               <Text wrap="truncate-end">{row.text === '' ? ' ' : row.text}</Text>
             </Box>
           )
@@ -547,6 +551,9 @@ export const register: Register = (on, options) => {
           </Box>
         )}
         <Box flexDirection="column" marginTop={1}>
+          {drawn.before > 0 && (
+            <Button key="earlier" plain dimColor label={`▴ ${drawn.before} earlier lines`} onPress={() => void patch($, { shown: Math.max(0, drawn.start - ROW_LIMIT + CONTEXT) })} />
+          )}
           {drawn.parts.map((part, index) =>
             'fold' in part ? (
               <Box flexDirection="row">
@@ -563,7 +570,9 @@ export const register: Register = (on, options) => {
               drawRun(part, index)
             ),
           )}
-          {drawn.hidden > 0 && <Text dimColor>{drawn.hidden} more lines are not shown; open the file to see them all.</Text>}
+          {drawn.hidden > 0 && (
+            <Button key="later" plain dimColor label={`▾ ${drawn.hidden} more lines`} onPress={() => void patch($, { shown: drawn.start + ROW_LIMIT - CONTEXT })} />
+          )}
         </Box>
       </Box>
     )

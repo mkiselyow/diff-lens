@@ -3,7 +3,9 @@ export type Row = { kind: RowKind; n: number; text: string }
 export type Run = { rows: Row[]; change: number | null; isTarget: boolean }
 export type Fold = { fold: number; count: number }
 export type Part = Run | Fold
-export type Layout = { parts: Part[]; changes: number; hidden: number; hasTarget: boolean }
+export type Layout = { parts: Part[]; changes: number; changeAt: number[]; start: number; before: number; hidden: number; hasTarget: boolean }
+
+type Item = Fold | { row: Row; change: number | null; isTarget: boolean }
 
 const MIN_FOLD = 3
 const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)/
@@ -48,58 +50,57 @@ export const nearestLine = (rows: Row[], line: number): number | null => {
   return best
 }
 
-export const layout = (rows: Row[], line: number | null, expanded: readonly number[], context: number, limit: number): Layout => {
+export const layout = (
+  rows: Row[],
+  line: number | null,
+  expanded: readonly number[],
+  context: number,
+  limit: number,
+  start: number | null = null,
+): Layout => {
   const isNear = rows.map(() => false)
   rows.forEach((row, i) => {
     if (row.kind === ' ' && !isTargetRow(row, line)) return
     for (let j = Math.max(0, i - context); j <= Math.min(rows.length - 1, i + context); j++) isNear[j] = true
   })
-  const all: Part[] = []
-  let changes = 0
+  const items: Item[] = []
+  const changeAt: number[] = []
+  let targetAt = -1
+  let openUntil = 0
   let i = 0
   while (i < rows.length) {
-    const start = i
-    const first = rows[i] as Row
-    if (!isNear[i]) {
+    const from = i
+    if (!isNear[i] && i >= openUntil) {
       while (i < rows.length && !isNear[i]) i++
-      if (expanded.includes(start) || i - start < MIN_FOLD) all.push({ rows: rows.slice(start, i), change: null, isTarget: false })
-      else all.push({ fold: start, count: i - start })
-      continue
+      if (!expanded.includes(from) && i - from >= MIN_FOLD) {
+        items.push({ fold: from, count: i - from })
+        continue
+      }
+      openUntil = i
+      i = from
     }
-    const startsChange = first.kind !== ' ' && (start === 0 || (rows[start - 1] as Row).kind === ' ')
-    const change = startsChange ? changes++ : null
-    if (isTargetRow(first, line)) {
-      all.push({ rows: [first], change, isTarget: true })
-      i++
-      continue
-    }
-    while (i < rows.length && isNear[i] && (rows[i] as Row).kind === first.kind && !isTargetRow(rows[i] as Row, line)) i++
-    all.push({ rows: rows.slice(start, i), change, isTarget: false })
+    const row = rows[i] as Row
+    const startsChange = row.kind !== ' ' && (i === 0 || (rows[i - 1] as Row).kind === ' ')
+    const isTarget = isTargetRow(row, line)
+    if (startsChange) changeAt.push(items.length)
+    if (isTarget) targetAt = items.length
+    items.push({ row, change: startsChange ? changeAt.length - 1 : null, isTarget })
+    i++
   }
-  const targetAt = all.findIndex(part => 'rows' in part && part.isTarget)
-  const size = (part: Part) => ('rows' in part ? part.rows.length : 1)
-  const total = all.reduce((sum, part) => sum + size(part), 0)
-  if (total <= limit) return { parts: all, changes, hidden: 0, hasTarget: targetAt >= 0 }
-  let from = 0
-  if (targetAt >= 0) {
-    let before = 0
-    from = targetAt
-    while (from > 0 && before + size(all[from - 1] as Part) <= limit / 2) before += size(all[--from] as Part)
-  }
+  const total = items.length
+  const first =
+    total <= limit ? 0 : Math.max(0, Math.min(total - limit, start !== null ? start : targetAt >= 0 ? targetAt - Math.floor(limit / 2) : 0))
+  const shown = items.slice(first, first + limit)
   const parts: Part[] = []
-  let drawn = 0
-  for (let at = from; at < all.length && drawn < limit; at++) {
-    const part = all[at] as Part
-    if ('rows' in part && drawn + part.rows.length > limit) {
-      parts.push({ ...part, rows: part.rows.slice(0, limit - drawn) })
-      drawn = limit
-    } else {
-      parts.push(part)
-      drawn += size(part)
-    }
+  for (const item of shown) {
+    const last = parts[parts.length - 1]
+    if ('fold' in item) parts.push(item)
+    else if (last !== undefined && 'rows' in last && !last.isTarget && !item.isTarget && item.change === null && (last.rows[0] as Row).kind === item.row.kind)
+      last.rows.push(item.row)
+    else parts.push({ rows: [item.row], change: item.change, isTarget: item.isTarget })
   }
 
-  return { parts, changes, hidden: total - drawn, hasTarget: targetAt >= 0 }
+  return { parts, changes: changeAt.length, changeAt, start: first, before: first, hidden: total - first - shown.length, hasTarget: targetAt >= first && targetAt < first + limit }
 }
 
 export const parseNumstat = (out: string): { path: string; added: number; removed: number; isBinary: boolean }[] =>
